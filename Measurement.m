@@ -10,8 +10,7 @@ classdef Measurement < matlab.mixin.SetGet
         ch1Att          % channel 1 attenuation
         ch2Att          % channel 2 attenuation 
         bwLimit         % 20 MHz bandwith limit    
-        
-        progress = 0;
+
         dateTime
 
         % Calculated data:  
@@ -33,7 +32,7 @@ classdef Measurement < matlab.mixin.SetGet
     end
 
     properties (SetAccess = private)
-        
+        progress = 0;
     end
 
     properties (Dependent = true)
@@ -46,14 +45,15 @@ classdef Measurement < matlab.mixin.SetGet
         function obj = Measurement(scopeIp, fgenIp, vpp, voff, z, fstart, fstop, samples,...
                 distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
             if nargin == 0
-                scopeIp = '0.0.0.0';
-                fgenIp = '0.0.0.0';
+                scopeIp = '192.168.0.151';
+                fgenIp = '192.168.0.163';
                 vpp = 1;
                 voff = 0;
                 z = 'HighZ';
                 ch1Att = 1;
                 ch2Att = 1;
                 bwLimit = false;
+                lockPanels = false;
                 enhancedScaling = true;
                 fstart = 50;
                 fstop = 50000;
@@ -70,7 +70,7 @@ classdef Measurement < matlab.mixin.SetGet
                 error('samples must be a natural number > 0 of type numeric.')
             end
             if ~(isequal(distr, 'log') || isequal(distr, 'linear'))
-                error('ditr must be of either log or linear.')
+                error('distr must be of either log or linear.')
             end
 
             %obj = obj@matlab.mixin.SetGet;     % implicitly called instead
@@ -78,20 +78,21 @@ classdef Measurement < matlab.mixin.SetGet
             obj.vpp = vpp;
             obj.voff = voff;
             obj.imp = z;
+            obj.sampleDistr = distr;
             obj.ch1Att = ch1Att;
             obj.ch2Att = ch2Att;
             obj.bwLimit = bwLimit;
             obj.enhScaling = enhancedScaling;
-            obj.freq = makeFreq(fstart, fstop, samples, distr);
+            obj.freq = Measurement.makeFreq(fstart, fstop, samples, distr);
 
-            scope = interface(scopeIp);
-            fgen = interface(fgenIp);
+            scope = Measurement.visaObj(scopeIp);
+            fgen = Measurement.visaObj(fgenIp);
+            scope.InputBufferSize = 2048;       % useless?!?!
             fopen(scope);
             fopen(fgen);
-            scope.InputBufferSize = 2048;       % useless?!?!
-            setup(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
-            [obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase] = sweep(obj, scope, fgen, freq, samples, vpp, voff, enhancedScaling);
-            [obj.mag, obj.magdB, obj.attdB, obj.phase, obj.omega] = processData(vpp1, vpp2, rawPhase, freq);
+            Measurement.setupInstr(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
+            [obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase] = sweep(obj, scope, fgen, obj.freq, samples, vpp, voff, enhancedScaling);
+            [obj.mag, obj.magdB, obj.attdB, obj.phase, obj.omega] = Measurement.processData(obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase, obj.freq);
         end
 
         function value = get.fstart(obj)
@@ -126,12 +127,12 @@ classdef Measurement < matlab.mixin.SetGet
                     if k == 1
                         fprintf(scope, ':AUToscale' );
                         pause(9); % auto-scale takes about 9 sec
-                        fprintf(scope, ':CHAN1:OFF 0' );
-                        fprintf(scope, ':CHAN2:OFF 0' );
+                        fprintf(scope, ':CHAN1:OFFS 0' );
+                        fprintf(scope, ':CHAN2:OFFS 0' );
                         
                         fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
                         ch1Vpp(1) = str2double(fscanf(scope, '%s' ));
-                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', calcVScale(ch1Vpp(k)))));
+                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch1Vpp(k)))));
                     end
                     period = 1/freq(k);
                     nP = 2; % number of periods on the screen
@@ -145,24 +146,27 @@ classdef Measurement < matlab.mixin.SetGet
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
                     ch2Vpp(k) = str2double(fscanf(scope, '%s' ));
                     
-                    fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', calcVScale(ch2Vpp(k)))));
+                    fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch2Vpp(k)))));
                     pause(1.5)
                 else
                     fprintf(scope, ':AUToscale' );
                     pause(9);  % auto-scale takes about 8.6 sec
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
                     ch1Vpp(k) = str2double(fscanf(scope, '%s' ));
-                    fprintf(DS1000Z, ':MEAS:ITEM? VPP,CHAN2' );
+                    fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
                     ch2Vpp(k) = str2double(fscanf(scope, '%s' ));
                 end
                 fprintf(scope, ':MEAS:ITEM? RPH' );
                 phase(k) = str2double(fscanf(scope, '%s' ));
                 obj.progress = k;
             end
-            cleanup(scope, fgen)
+            Measurement.cleanup(scope, fgen)
         end
+    end
 
-        function instr = interface(ip)
+    methods (Static)
+
+        function instr = visaObj(ip)
             % Find VISA-TCPIP objects.
             instr = instrfind('Type', 'visa-tcpip', 'RsrcName', append('TCPIP0::', ip, '::inst0::INSTR'), 'Tag', '');
             % Create the VISA-TCPIP object if it does not exist
@@ -175,7 +179,7 @@ classdef Measurement < matlab.mixin.SetGet
             end
         end
 
-        function setup(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
+        function setupInstr(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
             % lock frontpanels
             if(lockPanels)
                 fprintf(fgen, ':SYSTEM:KLOCK ALL ON' );
