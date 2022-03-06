@@ -45,8 +45,8 @@ classdef Measurement < matlab.mixin.SetGet
         function obj = Measurement(scopeIp, fgenIp, vpp, voff, z, fstart, fstop, samples,...
                 distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
             if nargin == 0
-                scopeIp = '192.168.0.151';
-                fgenIp = '192.168.0.163';
+                return
+            elseif nargin == 2
                 vpp = 1;
                 voff = 0;
                 z = 'HighZ';
@@ -239,7 +239,7 @@ classdef Measurement < matlab.mixin.SetGet
 
         % Code to be executed after finishing measurements
         function cleanup(scope, fgen)
-            fprintf(scope, ':OUTP1 OFF' );
+            fprintf(fgen, ':OUTP1 OFF' );
             % unlock frontpanels
             fprintf(scope, ':SYST:LOCK OFF'); 
             fprintf(fgen, ':SYSTEM:KLOCK ALL OFF'); 
