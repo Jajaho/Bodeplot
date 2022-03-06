@@ -1,11 +1,8 @@
 classdef Measurement < matlab.mixin.SetGet
-    properties
-        aborted = false;
-    end
-
     properties (SetAccess = private)
+        aborted = false;
         dateTime
-        % Settings (except 'lock frontpanel' and ip-adresses):
+        % Settings (except ip-adresses):
         vpp             % Peak to peak voltage
         voff            % Voltage offset
         imp             % Output impedance 
@@ -29,27 +26,28 @@ classdef Measurement < matlab.mixin.SetGet
         omega           % angular frequency
     end
 
-    properties (Dependent = true)
+    properties (SetAccess = private, Dependent = true)
         fstart          % lowest measured frequency
         fstop           % highest measured frequency
         samples         % number of samples
     end
 
     methods 
-        function obj = Measurement(vpp, voff, z, fstart, fstop, samples,...
+        function obj = Measurement(samples, vpp, voff, z, fstart, fstop,...
                 distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
             if nargin == 0
+                return
+            elseif nargin == 1
                 vpp = 1;
                 voff = 0;
                 z = 'HighZ';
                 ch1Att = 1;
                 ch2Att = 1;
-                bwLimit = false;
+                bwLimit = true;
                 lockPanels = false;
                 enhancedScaling = true;
                 fstart = 50;
-                fstop = 50000;
-                samples = 10;
+                fstop = 5000000;
                 distr = 'log';
             end
             if ~isnumeric(fstart)
@@ -102,6 +100,12 @@ classdef Measurement < matlab.mixin.SetGet
             [obj.mag, obj.magdB, obj.attdB, obj.phase, obj.omega] = Measurement.processData(obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase, obj.freq);
         end
 
+        function abortMeasurement(obj)
+            obj.aborted = true;
+        end
+    end
+
+    methods (Access = private)
         function [ch1Vpp, ch2Vpp, phase] = sweep(obj, scope, fgen, freq, samples, vpp, voff, eas)
             ch1Vpp(1:samples) = NaN;
             ch2Vpp(1:samples) = NaN;
@@ -157,7 +161,7 @@ classdef Measurement < matlab.mixin.SetGet
         end
     end
 
-    methods (Static)
+    methods (Access = private, Static)
 
         function instr = visaObj(ip)
             % Find VISA-TCPIP objects.
