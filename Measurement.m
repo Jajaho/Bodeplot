@@ -12,6 +12,7 @@ classdef Measurement < matlab.mixin.SetGet
         bwLimit         % 20 MHz bandwith limit    
         
         progress = 0;
+        dateTime
 
         % Calculated data:  
         mag
@@ -27,6 +28,7 @@ classdef Measurement < matlab.mixin.SetGet
     end
 
     properties
+        %name
         aborted = false;
     end
 
@@ -43,6 +45,36 @@ classdef Measurement < matlab.mixin.SetGet
     methods 
         function obj = Measurement(scopeIp, fgenIp, vpp, voff, z, fstart, fstop, samples,...
                 distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
+            if nargin == 0
+                scopeIp = '0.0.0.0';
+                fgenIp = '0.0.0.0';
+                vpp = 1;
+                voff = 0;
+                z = 'HighZ';
+                ch1Att = 1;
+                ch2Att = 1;
+                bwLimit = false;
+                enhancedScaling = true;
+                fstart = 50;
+                fstop = 50000;
+                samples = 10;
+                distr = 'log';
+            end
+            if ~isnumeric(fstart)
+                error('fstart must be of type numeric.')
+            end
+            if ~isnumeric(fstop)
+                error('fstop must be of type numeric.')
+            end
+            if ~(isnumeric(samples) && samples > 0 && mod(samples, 1) == 0)
+                error('samples must be a natural number > 0 of type numeric.')
+            end
+            if ~(isequal(distr, 'log') || isequal(distr, 'linear'))
+                error('ditr must be of either log or linear.')
+            end
+
+            %obj = obj@matlab.mixin.SetGet;     % implicitly called instead
+            obj.dateTime = datetime;
             obj.vpp = vpp;
             obj.voff = voff;
             obj.imp = z;
@@ -129,9 +161,7 @@ classdef Measurement < matlab.mixin.SetGet
             end
             cleanup(scope, fgen)
         end
-    end
 
-    methods (Static)
         function instr = interface(ip)
             % Find VISA-TCPIP objects.
             instr = instrfind('Type', 'visa-tcpip', 'RsrcName', append('TCPIP0::', ip, '::inst0::INSTR'), 'Tag', '');
@@ -179,9 +209,7 @@ classdef Measurement < matlab.mixin.SetGet
             fprintf(scope, ':CHAN1:DISP ON' );
             fprintf(scope, ':CHAN2:DISP ON' );            
         end
-    end
 
-    methods (Access = private, Static)
         function freq = makeFreq(fstart, fstop, samples, distr)
             if isequal(distr, 'log')
                 freq = logspace(log10(fstart), log10(fstop), samples);
