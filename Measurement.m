@@ -1,38 +1,32 @@
 classdef Measurement < matlab.mixin.SetGet
-    properties (SetAccess = immutable)
-        % Settings (except 'lock frontpanel'):
-        vpp             % peak to peak voltage
-        voff            % voltage offset
-        imp             % output impedance 
-        freq            % measured frequency matrix
-        sampleDistr     % distribution of samples over frequency range
-        enhScaling      % experimental auto-scaling
-        ch1Att          % channel 1 attenuation
-        ch2Att          % channel 2 attenuation 
-        bwLimit         % 20 MHz bandwith limit    
-
-        dateTime
-
-        % Calculated data:  
-        mag
-        magdB
-        attdB
-        phase
-        omega
-
-        % Data:
-        ch1Vpp          % Vpp measured at channel 1
-        ch2Vpp          % Vpp measured at channel 2
-        rawPhase        % unprocessed phase data in degree
-    end
-
     properties
-        %name
         aborted = false;
     end
 
     properties (SetAccess = private)
+        dateTime
+        % Settings (except 'lock frontpanel' and ip-adresses):
+        vpp             % Peak to peak voltage
+        voff            % Voltage offset
+        imp             % Output impedance 
+        freq            % Measured frequency matrix
+        sampleDistr     % Distribution of samples over frequency range
+        enhScaling      % Experimental auto-scaling
+        ch1Att          % Channel 1 attenuation
+        ch2Att          % Channel 2 attenuation 
+        bwLimit         % 20 MHz bandwith limit  
+        lockPanels      % Lock frontpanels
         progress = 0;
+        % Data:
+        ch1Vpp          % Vpp measured at channel 1
+        ch2Vpp          % Vpp measured at channel 2
+        rawPhase        % unprocessed phase data in degree
+        % Calculated data:  
+        mag             % Magnitude of ch2Vpp/ch1Vpp
+        magdB           % Magnitude in dB
+        attdB           % Attenuation in dB
+        phase           % phase
+        omega           % angular frequency
     end
 
     properties (Dependent = true)
@@ -42,11 +36,9 @@ classdef Measurement < matlab.mixin.SetGet
     end
 
     methods 
-        function obj = Measurement(scopeIp, fgenIp, vpp, voff, z, fstart, fstop, samples,...
+        function obj = Measurement(vpp, voff, z, fstart, fstop, samples,...
                 distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
             if nargin == 0
-                return
-            elseif nargin == 2
                 vpp = 1;
                 voff = 0;
                 z = 'HighZ';
@@ -82,17 +74,9 @@ classdef Measurement < matlab.mixin.SetGet
             obj.ch1Att = ch1Att;
             obj.ch2Att = ch2Att;
             obj.bwLimit = bwLimit;
+            obj.lockPanels = lockPanels;
             obj.enhScaling = enhancedScaling;
             obj.freq = Measurement.makeFreq(fstart, fstop, samples, distr);
-
-            scope = Measurement.visaObj(scopeIp);
-            fgen = Measurement.visaObj(fgenIp);
-            scope.InputBufferSize = 2048;       % useless?!?!
-            fopen(scope);
-            fopen(fgen);
-            Measurement.setupInstr(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
-            [obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase] = sweep(obj, scope, fgen, obj.freq, samples, vpp, voff, enhancedScaling);
-            [obj.mag, obj.magdB, obj.attdB, obj.phase, obj.omega] = Measurement.processData(obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase, obj.freq);
         end
 
         function value = get.fstart(obj)
@@ -107,22 +91,31 @@ classdef Measurement < matlab.mixin.SetGet
             value = length(obj.freq);
         end
 
+        function makeMeasurement(obj, scopeIp, fgenIp)
+            scope = Measurement.visaObj(scopeIp);
+            fgen = Measurement.visaObj(fgenIp);
+            scope.InputBufferSize = 2048;       % useless?!?!
+            fopen(scope);
+            fopen(fgen);
+            Measurement.setupInstr(scope, fgen, obj.lockPanels, obj.imp, obj.ch1Att, obj.ch2Att, obj.bwLimit)
+            [obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase] = sweep(obj, scope, fgen, obj.freq, obj.samples, obj.vpp, obj.voff, obj.enhScaling);
+            [obj.mag, obj.magdB, obj.attdB, obj.phase, obj.omega] = Measurement.processData(obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase, obj.freq);
+        end
+
         function [ch1Vpp, ch2Vpp, phase] = sweep(obj, scope, fgen, freq, samples, vpp, voff, eas)
-            ch1Vpp = zeros(1, samples);
-            ch2Vpp = zeros(1, samples);
-            phase = zeros(1, samples);
+            ch1Vpp(1:samples) = NaN;
+            ch2Vpp(1:samples) = NaN;
+            phase(1:samples) = NaN;
             for k = 1:samples
                 if obj.aborted
                     break
                 end
-    
                 pause(0.1);
                 fprintf(fgen, ':OUTP1 OFF' );
                 % set CH1 wafeform to sinusoidal with the specified frequency, amplitude, offset 
                 fprintf(fgen, append(':SOUR1:APPL:SIN ', int2str(freq(k)), ',', int2str(vpp), ',', int2str(voff), ',0'));
                 pause(0.1); % pause needed, otherwise new setting would not affect output signal
                 fprintf(fgen, ':OUTP1 ON' );
-    
                 if eas  % enhanced auto-scaling
                     if k == 1
                         fprintf(scope, ':AUToscale' );
@@ -158,7 +151,7 @@ classdef Measurement < matlab.mixin.SetGet
                 end
                 fprintf(scope, ':MEAS:ITEM? RPH' );
                 phase(k) = str2double(fscanf(scope, '%s' ));
-                obj.progress = k;
+                obj.progress = round(k/samples*100);
             end
             Measurement.cleanup(scope, fgen)
         end
