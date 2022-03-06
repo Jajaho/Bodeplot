@@ -13,7 +13,7 @@ Physical wiring:
 function gen. CH1 -> BNC T-splitter -> Osc. CH1 & DUT input
 DUT output -> Osc. CH2
 
-Check check probe attenuation settings to match setup!
+Check probe attenuation settings to match setup!
 
 Notes:
 - All commands are case-insensitive and can be appreviated to only the
