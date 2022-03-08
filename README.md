@@ -3,7 +3,7 @@ So far only using a Rigol DS1000Z series oscilloscope and an Rigol DG1000Z serie
 The app uses the Visa protocoll over TCP/IP. Any other connection could however easily be made with some simple modifications.
 
 Requirements:
-- Matlab 2014b or higher (theoretically)
+- Matlab R2006b or higher (theoretically)
 - Instrument Control Toolbox
 - IVI Drivers:
 	- https://www.rigol.eu/En/Index/listView/catid/28/tp/9/p/2		    (DS1000Z)

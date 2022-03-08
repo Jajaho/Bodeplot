@@ -127,6 +127,7 @@ classdef Measurement < matlab.mixin.SetGet
                         fprintf(scope, ':CHAN1:OFFS 0' );
                         fprintf(scope, ':CHAN2:OFFS 0' );
                         
+%                        ch1Vpp(1) = query(scope, ':MEAS:ITEM? VPP,CHAN1');
                         fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
                         ch1Vpp(1) = str2double(fscanf(scope, '%s' ));
                         fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch1Vpp(k)))));
@@ -137,8 +138,10 @@ classdef Measurement < matlab.mixin.SetGet
                     fprintf(scope, append(':TIM:MAIN:SCAL ', sprintf('%0.7e', timescale)));
                     
                     pause(0.1)
-
-                    fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
+                    
+%                    ch1Vpp(k) = query(scope, ':MEAS:ITEM? VPP,CHAN1', '%s', '%c');
+%                    ch2Vpp(k) = query(scope, ':MEAS:ITEM? VPP,CHAN2', '%s', '%c');
+                    fprintf(scope, ':MEAS:ITEM? VPP,CHAN1');
                     ch1Vpp(k) = str2double(fscanf(scope, '%s' ));
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
                     ch2Vpp(k) = str2double(fscanf(scope, '%s' ));
@@ -153,6 +156,7 @@ classdef Measurement < matlab.mixin.SetGet
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
                     ch2Vpp(k) = str2double(fscanf(scope, '%s' ));
                 end
+%                phase(k) = query(scope, ':MEAS:ITEM? RPH', '%s', '%c');
                 fprintf(scope, ':MEAS:ITEM? RPH' );
                 phase(k) = str2double(fscanf(scope, '%s' ));
                 obj.progress = round(k/samples*100);
@@ -162,20 +166,6 @@ classdef Measurement < matlab.mixin.SetGet
     end
 
     methods (Access = private, Static)
-
-        function instr = visaObj(ip)
-            % Find VISA-TCPIP objects.
-            instr = instrfind('Type', 'visa-tcpip', 'RsrcName', append('TCPIP0::', ip, '::inst0::INSTR'), 'Tag', '');
-            % Create the VISA-TCPIP object if it does not exist
-            % otherwise use the object that was found.
-            if isempty(instr)
-                instr = visa('NI', append('TCPIP0::', ip, '::inst0::INSTR'));
-            else
-                fclose(instr);
-                instr = instr(1);
-            end
-        end
-
         function setupInstr(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
             % lock frontpanels
             if(lockPanels)
@@ -218,6 +208,7 @@ classdef Measurement < matlab.mixin.SetGet
                 freq = linspace(fstart, fstop, samples);
             end               
         end
+
         % Calculates and rounds the vertical scale so that the curve
         % occupies half of the screen, used for fast auto-scaling
         function scale = calcVScale(Vpp)
@@ -234,6 +225,32 @@ classdef Measurement < matlab.mixin.SetGet
             end
         end
 
+        % Processing of aquired measurements
+        function [mag, magdB, attdB, phase, omega] = processData(vpp1, vpp2, rawPhase, freq)
+            mag = vpp2./vpp1;
+            magdB = 20.*log10(mag);
+            attdB = -magdB;
+            omega = 2*pi.*freq;
+            pha = rawPhase;
+            pha(pha > 1000) = NaN;     % replace failed measurements
+            phase = pha./180.*pi;
+        end
+    end
+    
+    methods (Static)
+        function instr = visaObj(ip)
+            % Find VISA-TCPIP objects.
+            instr = instrfind('Type', 'visa-tcpip', 'RsrcName', append('TCPIP0::', ip, '::inst0::INSTR'), 'Tag', '');
+            % Create the VISA-TCPIP object if it does not exist
+            % otherwise use the object that was found.
+            if isempty(instr)
+                instr = visa('NI', append('TCPIP0::', ip, '::inst0::INSTR'));
+            else
+                fclose(instr);
+                instr = instr(1);
+            end
+        end
+        
         % Code to be executed after finishing measurements
         function cleanup(scope, fgen)
             fprintf(fgen, ':OUTP1 OFF' );
@@ -244,17 +261,6 @@ classdef Measurement < matlab.mixin.SetGet
             fclose(scope);
             delete(fgen);
             delete(scope);
-        end
-        
-        % Processing of aquired measurements
-        function [mag, magdB, attdB, phase, omega] = processData(vpp1, vpp2, rawPhase, freq)
-            mag = vpp2./vpp1;
-            magdB = 20.*log10(mag);
-            attdB = -magdB;
-            omega = 2*pi.*freq;
-            pha = rawPhase;
-            pha(pha > 1000) = NaN;     % catch failed measurements
-            phase = pha./180.*pi;
         end
     end
 end
