@@ -12,15 +12,28 @@ So far only using a Rigol DS1000Z series oscilloscope and an Rigol DG1000Z serie
 
 ## Getting started
 1. Install all requirements listed above, only explicitly listed requirements are needed.
-2. Find out your instruments ip-addresses.
+2. Add bodeplott.mlapp and Measurement.m to your MATLAB path.
+3. Launch bodeplott.mlapp via the app designer.
+4. Replace the ip-addresses in the gui, here is where you find your instruments addresses:
 	- On your DS1000Z series oscilloscope:
 		- Press the 'Utility' button 
 		- Select 'IO Setting' -> 'LAN Conf.'
 	- On your DG1000Z function generator:
 		- Press the 'Utility' button
 		- Navigate 'I/O Config' -> 'LAN'
+5. Package the app
+
+Alternatively you can also use Measurement.m to take frequency response measurements on its own.    
+To do so, first create a measurement object using the class constructor:    
+```
+m1 = Measurement()    
+```
+Take the measurement:    
+```
+m1.makeMeasurement('scopeIp', 'fgenIp')    
+```
 	
-### Physical connection
+## Physical connection
 - Function gen. CH1 -> BNC T-splitter -> Osc. CH1 & DUT input
 - DUT output -> Osc. CH2
 
