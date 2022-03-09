@@ -1,20 +1,34 @@
 classdef Measurement < matlab.mixin.SetGet
-    properties (SetAccess = private)
-        aborted = false;
-        dateTime
+    % Measurement class for frequency response measurements, Bode Plots
+    %
+    %   m1 = Measurement()
+    %
+    %   m1.makeMeasurement(scopeIp, fgenIp)
+    %
+    % Jakob Holz 2022
+
+    properties 
         % Settings (except ip-adresses):
+        samples         % Number of samples
+        distr           % Distribution of samples over frequency range
+        fstart          % Lowest measured frequency
+        fstop           % Highest measured frequency
         vpp             % Peak to peak voltage
         voff            % Voltage offset
         imp             % Output impedance 
-        freq            % Measured frequency matrix
-        sampleDistr     % Distribution of samples over frequency range
-        enhScaling      % Experimental auto-scaling
+        eas             % Enhanced auto-scaling, faster, wider frequency range
         ch1Att          % Channel 1 attenuation
         ch2Att          % Channel 2 attenuation 
-        bwLimit         % 20 MHz bandwith limit  
-        lockPanels      % Lock frontpanels
+        bwl             % 20 MHz bandwith limit  
+        lock            % Lock frontpanels
+    end
+
+    properties (SetAccess = private)
+        %finished = false;
+        aborted = false;
         progress = 0;
-        % Data:
+        dateTime 
+        % Measured data:
         ch1Vpp          % Vpp measured at channel 1
         ch2Vpp          % Vpp measured at channel 2
         rawPhase        % unprocessed phase data in degree
@@ -22,25 +36,20 @@ classdef Measurement < matlab.mixin.SetGet
         mag             % Magnitude of ch2Vpp/ch1Vpp
         magdB           % Magnitude in dB
         attdB           % Attenuation in dB
-        phase           % phase
-        omega           % angular frequency
-    end
-
-    properties (SetAccess = private, Dependent = true)
-        fstart          % lowest measured frequency
-        fstop           % highest measured frequency
-        samples         % number of samples
+        phase           % Phase
+        freq            % Frequency 
+        omega           % Angular frequency
     end
 
     methods 
-        function obj = Measurement(samples, vpp, voff, z, fstart, fstop,...
+        function obj = Measurement(samples, vpp, voff, imp, fstart, fstop,...
                 distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
             if nargin == 0
                 return
             elseif nargin == 1
                 vpp = 1;
                 voff = 0;
-                z = 'HighZ';
+                imp = 'HighZ';
                 ch1Att = 1;
                 ch2Att = 1;
                 bwLimit = true;
@@ -50,46 +59,24 @@ classdef Measurement < matlab.mixin.SetGet
                 fstop = 5000000;
                 distr = 'log';
             end
-            if ~isnumeric(fstart)
-                error('fstart must be of type numeric.')
-            end
-            if ~isnumeric(fstop)
-                error('fstop must be of type numeric.')
-            end
-            if ~(isnumeric(samples) && samples > 0 && mod(samples, 1) == 0)
-                error('samples must be a natural number > 0 of type numeric.')
-            end
-            if ~(isequal(distr, 'log') || isequal(distr, 'linear'))
-                error('distr must be of either log or linear.')
-            end
 
-            %obj = obj@matlab.mixin.SetGet;     % implicitly called instead
-            obj.dateTime = datetime;
+            obj.fstart = fstart;
+            obj.fstop = fstop;
+            obj.samples = samples;
+            obj.distr = distr;
             obj.vpp = vpp;
             obj.voff = voff;
-            obj.imp = z;
-            obj.sampleDistr = distr;
+            obj.imp = imp;
             obj.ch1Att = ch1Att;
             obj.ch2Att = ch2Att;
-            obj.bwLimit = bwLimit;
-            obj.lockPanels = lockPanels;
-            obj.enhScaling = enhancedScaling;
-            obj.freq = Measurement.makeFreq(fstart, fstop, samples, distr);
-        end
-
-        function value = get.fstart(obj)
-            value = obj.freq(1);
-        end
-
-        function value = get.fstop(obj)
-            value = obj.freq(length(obj.freq));
-        end
-
-        function value = get.samples(obj)
-            value = length(obj.freq);
+            obj.bwl = bwLimit;
+            obj.lock = lockPanels;
+            obj.eas = enhancedScaling;
         end
 
         function makeMeasurement(obj, scopeIp, fgenIp)
+            obj.time = datetime;
+            obj.freq = Measurement.makeFreq(obj.fstart, obj.fstop, obj.samples, obj.distr);
             scope = Measurement.visaObj(scopeIp);
             fgen = Measurement.visaObj(fgenIp);
             scope.InputBufferSize = 2048;       % useless?!?!
@@ -102,6 +89,104 @@ classdef Measurement < matlab.mixin.SetGet
 
         function abortMeasurement(obj)
             obj.aborted = true;
+        end
+
+        %% Setter methods
+
+        function set.samples(obj, samples)
+            if isinteger(samples) && samples > 0
+                obj.samples = samples;
+            else
+                error('samples must a positive integer.')
+            end
+        end
+
+        function set.distr(obj, distr)
+            if isequal(distr, 'log') || isequal(distr, 'linear')
+                obj.distr = distr;
+            else
+                error('distr must be of either log or linear.')
+            end
+        end
+
+        function set.fstart(obj, fstart)
+            if isnumeric(fstart)
+                obj.fstart = fstart;
+            else
+                error('fstart must be of type numeric.')
+            end
+        end
+
+        function set.fstop(obj, fstop)
+            if isnumeric(fstop)
+                obj.fstop = fstop;
+            else
+                error('fstop must be numeric.')
+            end
+        end
+
+        function set.vpp(obj, vpp)
+            if isnumeric(vpp) && vpp > 0
+                obj.vpp = vpp;
+            else
+                error('The peak to peak voltage (vpp) must be positive numeric value.')
+            end
+        end
+
+        function set.voff(obj, voff)
+            if isnumeric(voff)
+                obj.voff = voff;
+            else
+                error('The offset voltage (voff) must be numeric.')
+            end
+        end
+
+        function set.imp(obj, imp)
+            if isnumeric(imp)
+                obj.imp = imp;
+            else
+                error('The output impedance (imp) must be numeric.')
+            end
+        end
+
+        function set.ch1Att(obj, ch1Att)
+            if isnumeric(ch1Att)
+                obj.ch1Att = ch1Att;
+            else
+                error('ch1Att must be numeric.')
+            end
+        end
+
+        function set.ch2Att(obj, ch2Att)
+            if isnumeric(ch2Att)
+                obj.ch2Att = ch2Att;
+            else
+                error('ch2Att must be numeric.')
+            end
+        end
+
+        function set.bwl(obj, bwl)
+            if islogical(bwl)
+                obj.bwl = bwl;
+            else
+                error('Bandwidth Limit (bwl) must be logical type.')
+            end
+        end
+
+        function set.lock(obj, lock)
+            if islogical(lock)
+                obj.lock = lock;
+            else
+                error('Lock frontpanels (lock) must be logical type.')
+            end
+        end
+
+        function set.eas(obj, enhScaling)
+            if islogical(enhScaling)
+                obj.eas = enhScaling;
+            else
+                error('Enhanced Auto-Scaling (eas) must be logical type.')
+            end
         end
     end
 
