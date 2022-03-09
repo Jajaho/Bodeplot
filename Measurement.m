@@ -26,24 +26,24 @@ classdef Measurement < matlab.mixin.SetGet
     properties (SetAccess = private)
         %finished = false;
         aborted = false;
-        progress = 0;
-        dateTime 
+        progress = 0;       % Progress of the  measurement in percent
+        time                % Date and time when the measurement was taken
         % Measured data:
-        ch1Vpp          % Vpp measured at channel 1
-        ch2Vpp          % Vpp measured at channel 2
-        rawPhase        % unprocessed phase data in degree
+        ch1Vpp              % Vpp measured at channel 1
+        ch2Vpp              % Vpp measured at channel 2
+        rawPhase            % unprocessed phase data in degree
         % Calculated data:  
-        mag             % Magnitude of ch2Vpp/ch1Vpp
-        magdB           % Magnitude in dB
-        attdB           % Attenuation in dB
-        phase           % Phase
-        freq            % Frequency 
-        omega           % Angular frequency
+        mag                 % Magnitude of ch2Vpp/ch1Vpp
+        magdB               % Magnitude in dB
+        attdB               % Attenuation in dB
+        phase               % Phase
+        freq                % Frequency 
+        omega               % Angular frequency
     end
 
     methods 
-        function obj = Measurement(samples, vpp, voff, imp, fstart, fstop,...
-                distr, ch1Att, ch2Att, bwLimit, lockPanels, enhancedScaling)
+        function obj = Measurement(samples, fstart, fstop, distr, ch1Att,...
+                ch2Att, bwLimit, enhancedScaling, vpp, voff, imp, lockPanels)
             if nargin == 0
                 return
             elseif nargin == 1
@@ -82,8 +82,8 @@ classdef Measurement < matlab.mixin.SetGet
             scope.InputBufferSize = 2048;       % useless?!?!
             fopen(scope);
             fopen(fgen);
-            Measurement.setupInstr(scope, fgen, obj.lockPanels, obj.imp, obj.ch1Att, obj.ch2Att, obj.bwLimit)
-            [obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase] = sweep(obj, scope, fgen, obj.freq, obj.samples, obj.vpp, obj.voff, obj.enhScaling);
+            Measurement.setupInstr(scope, fgen, obj.lock, obj.imp, obj.ch1Att, obj.ch2Att, obj.bwl)
+            [obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase] = sweep(obj, scope, fgen, obj.freq, obj.samples, obj.vpp, obj.voff, obj.eas);
             [obj.mag, obj.magdB, obj.attdB, obj.phase, obj.omega] = Measurement.processData(obj.ch1Vpp, obj.ch2Vpp, obj.rawPhase, obj.freq);
         end
 
@@ -94,7 +94,7 @@ classdef Measurement < matlab.mixin.SetGet
         %% Setter methods
 
         function set.samples(obj, samples)
-            if isinteger(samples) && samples > 0
+            if isnumeric(samples) && samples > 0
                 obj.samples = samples;
             else
                 error('samples must a positive integer.')
@@ -142,7 +142,7 @@ classdef Measurement < matlab.mixin.SetGet
         end
 
         function set.imp(obj, imp)
-            if isnumeric(imp)
+            if isequal(imp,'HighZ') || isequal(imp,'50 Ohm') || isnumeric(imp)
                 obj.imp = imp;
             else
                 error('The output impedance (imp) must be numeric.')
