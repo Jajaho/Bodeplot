@@ -199,51 +199,66 @@ classdef Measurement < matlab.mixin.SetGet
                 if obj.aborted
                     break
                 end
-                pause(0.1);
-                fprintf(fgen, ':OUTP1 OFF' );
-                % set CH1 wafeform to sinusoidal with the specified frequency, amplitude, offset 
-                fprintf(fgen, append(':SOUR1:APPL:SIN ', int2str(freq(k)), ',', int2str(vpp), ',', int2str(voff), ',0'));
-                pause(0.1); % pause needed, otherwise new setting would not affect output signal
-                fprintf(fgen, ':OUTP1 ON' );
+                fprintf(fgen, append(':SOUR1:APPL:SIN ', num2str(freq(k)), ',', num2str(vpp), ',', num2str(voff), ',0'));
                 if eas  % enhanced auto-scaling
                     if k == 1
-                        fprintf(scope, ':AUToscale' );
-                        pause(9); % auto-scale takes about 9 sec
-                        fprintf(scope, ':CHAN1:OFFS 0' );
-                        fprintf(scope, ':CHAN2:OFFS 0' );
+                        fprintf(fgen, ':OUTP1 ON' );
+                        pause(0.5)
+                        %fprintf(scope, ':AUToscale' );
+                        fprintf(scope, ':TRIG:MODE: EDGE');
+                        fprintf(scope, ':TRIG:EDG:SOUR CHAN1');
+                        fprintf(scope, ':TRIG:EDG:SLOP POS');
+                        fprintf(scope, ':TRIG:EDG:LEV 0');
+                        fprintf(scope, ':TRIG:SWE: AUTO');
+                        fprintf(scope, ':TRIG:NREJ ON');
+                        pause(1); % auto-scale takes about 9 sec
+                        fprintf(scope, ':CHAN1:OFFS 0');
+                        fprintf(scope, ':CHAN2:OFFS 0');
                         
+                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(vpp, obj.ch1Att))));
 %                        ch1Vpp(1) = query(scope, ':MEAS:ITEM? VPP,CHAN1');
-                        fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
-                        ch1Vpp(1) = str2double(fscanf(scope, '%s' ));
-                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch1Vpp(k)))));
+%                        fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
+%                        ch1Vpp(1) = str2double(fscanf(scope, '%s' ));
+%                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch1Vpp(k)))));
+                    end
+                    if freq(k) > 75e3
+                        fprintf(scope, ':TRIG:COUP: LFR');
+                    else
+                        fprintf(scope, ':TRIG:COUP: HFR');
                     end
                     period = 1/freq(k);
                     nP = 2; % number of periods on the screen
                     timescale = round(period/12*nP, 9);
                     fprintf(scope, append(':TIM:MAIN:SCAL ', sprintf('%0.7e', timescale)));
+                    if k == 1
+                        Measurement.findVScale(scope, obj.ch2Att)
+                    end
                     
                     pause(0.1)
-                    
-%                    ch1Vpp(k) = query(scope, ':MEAS:ITEM? VPP,CHAN1', '%s', '%c');
-%                    ch2Vpp(k) = query(scope, ':MEAS:ITEM? VPP,CHAN2', '%s', '%c');
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN1');
-                    ch1Vpp(k) = str2double(fscanf(scope, '%s' ));
+                    ch1Vpp(k) = str2double(fscanf(scope, '%s'));
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
-                    ch2Vpp(k) = str2double(fscanf(scope, '%s' ));
-                    
-                    fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch2Vpp(k)))));
+                    ch2Vpp(k) = str2double(fscanf(scope, '%s'));
+                    fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch1Vpp(k), obj.ch1Att))));
+                    fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch2Vpp(k), obj.ch2Att))));
                     pause(1.5)
                 else
-                    fprintf(scope, ':AUToscale' );
+                    if k == 1
+                        fprintf(fgen, ':OUTP1 ON');
+                        pause(0.5)
+                    end
+                    fprintf(scope, ':AUToscale');
                     pause(9);  % auto-scale takes about 8.6 sec
-                    fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
-                    ch1Vpp(k) = str2double(fscanf(scope, '%s' ));
-                    fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
-                    ch2Vpp(k) = str2double(fscanf(scope, '%s' ));
                 end
+                fprintf(scope, ':MEAS:ITEM? VPP,CHAN1');
+                ch1Vpp(k) = str2double(fscanf(scope, '%s'));
+                fprintf(scope, ':MEAS:ITEM? VPP,CHAN2' );
+                ch2Vpp(k) = str2double(fscanf(scope, '%s'));
+%                ch1Vpp(k) = query(scope, ':MEAS:ITEM? VPP,CHAN1', '%s', '%c');
+%                ch2Vpp(k) = query(scope, ':MEAS:ITEM? VPP,CHAN2', '%s', '%c');
 %                phase(k) = query(scope, ':MEAS:ITEM? RPH', '%s', '%c');
-                fprintf(scope, ':MEAS:ITEM? RPH' );
-                phase(k) = str2double(fscanf(scope, '%s' ));
+                fprintf(scope, ':MEAS:ITEM? RPH');
+                phase(k) = str2double(fscanf(scope, '%s'));
                 obj.progress = round(k/samples*100);
             end
             Measurement.cleanup(scope, fgen)
@@ -254,11 +269,11 @@ classdef Measurement < matlab.mixin.SetGet
         function setupInstr(scope, fgen, lockPanels, z, ch1Att, ch2Att, bwLimit)
             % lock frontpanels
             if(lockPanels)
-                fprintf(fgen, ':SYSTEM:KLOCK ALL ON' );
-                fprintf(scope, ':SYST:LOCK ON' );
+                fprintf(fgen, ':SYSTEM:KLOCK ALL ON');
+                fprintf(scope, ':SYST:LOCK ON');
             else
-                fprintf(fgen, ':SYSTEM:KLOCK ALL OFF' );
-                fprintf(scope, ':SYST:LOCK OFF' );
+                fprintf(fgen, ':SYSTEM:KLOCK ALL OFF');
+                fprintf(scope, ':SYST:LOCK OFF');
             end
             % set CH1 output impedance
             if isequal(z, 'HighZ')
@@ -266,24 +281,24 @@ classdef Measurement < matlab.mixin.SetGet
             else
                 fprintf(fgen, append(':OUTP1:IMP ', z));
             end
-            fprintf(scope, ':CHAN1:COUP DC' );
-            fprintf(scope, ':CHAN2:COUP DC' );
+            fprintf(scope, ':CHAN1:COUP DC');
+            fprintf(scope, ':CHAN2:COUP DC');
             fprintf(scope, append(':CHAN1:PROB ', int2str(ch1Att)));
             fprintf(scope, append(':CHAN2:PROB ', int2str(ch2Att)));
             % enable/disable 20 MHz bandwidthlimit
             if bwLimit
-                fprintf(scope, ':CHAN1:BWL 20M' ); 
-                fprintf(scope, ':CHAN2:BWL 20M' ); 
+                fprintf(scope, ':CHAN1:BWL 20M'); 
+                fprintf(scope, ':CHAN2:BWL 20M'); 
             else
-                fprintf(scope, ':CHAN1:BWL OFF' ); 
-                fprintf(scope, ':CHAN2:BWL OFF' ); 
+                fprintf(scope, ':CHAN1:BWL OFF'); 
+                fprintf(scope, ':CHAN2:BWL OFF'); 
             end
             % MEASURE
-            fprintf(scope, ':MEAS:CLE ALL' );
-            fprintf(scope, ':MEAS:SET:PSA CHAN1' );   % Set source A of phase measurement to CH1
-            fprintf(scope, ':MEAS:SET:PSB CHAN2' );   % Set source B of phase measurement to CH2
-            fprintf(scope, ':CHAN1:DISP ON' );
-            fprintf(scope, ':CHAN2:DISP ON' );            
+            fprintf(scope, ':MEAS:CLE ALL');
+            fprintf(scope, ':MEAS:SET:PSA CHAN1');   % Set source A of phase measurement to CH1
+            fprintf(scope, ':MEAS:SET:PSB CHAN2');   % Set source B of phase measurement to CH2
+            fprintf(scope, ':CHAN1:DISP ON');
+            fprintf(scope, ':CHAN2:DISP ON');            
         end
 
         function freq = makeFreq(fstart, fstop, samples, distr)
@@ -293,12 +308,37 @@ classdef Measurement < matlab.mixin.SetGet
                 freq = linspace(fstart, fstop, samples);
             end               
         end
-
+        
+        function findVScale(scope, att)
+            vold = 0;
+            for k = [10  1 0.1 0.01]    % coarse
+                fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', k*att)));
+                pause(0.05)
+                fprintf(scope, ':MEAS:ITEM? VPP,CHAN2');
+                vpp = str2double(fscanf(scope, '%s'));
+                if vpp < 9.9e+10
+                    vold = vpp;
+                    break
+                end
+            end
+            for k = 1:5     % fine 
+                fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', Measurement.calcVScale(vold, att))));
+                pause(0.05)
+                fprintf(scope, ':MEAS:ITEM? VPP,CHAN2');
+                vnew = str2double(fscanf(scope, '%s'));
+                if abs(vnew-vold) <= 0.05
+                    return
+                end
+                vold = vnew;
+            end
+            error('Could not display CH2 correctly, check probe attenuation!')
+        end
+        
         % Calculates and rounds the vertical scale so that the curve
-        % occupies half of the screen, used for fast auto-scaling
-        function scale = calcVScale(Vpp)
+        % occupies half of the screen, used for enhanced auto-scaling
+        function scale = calcVScale(vpp, att)
             % *2 because half of the screen, /8 because the screen fits 8 divisions
-            scale = Vpp*0.25;   
+            scale = vpp*0.25;   
             if scale < 0.001
                 scale = 0.001;
             elseif scale >= 0.001 || scale < 1 
@@ -308,6 +348,7 @@ classdef Measurement < matlab.mixin.SetGet
             elseif scale >= 10
                 scale = 10;
             end
+            scale = scale*att;    % Scaling is related to probe attenuation
         end
 
         % Processing of aquired measurements
