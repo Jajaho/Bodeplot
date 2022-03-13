@@ -202,37 +202,43 @@ classdef Measurement < matlab.mixin.SetGet
                 fprintf(fgen, append(':SOUR1:APPL:SIN ', num2str(freq(k)), ',', num2str(vpp), ',', num2str(voff), ',0'));
                 if eas  % enhanced auto-scaling
                     if k == 1
-                        fprintf(fgen, ':OUTP1 ON' );
-                        pause(0.5)
-                        %fprintf(scope, ':AUToscale' );
+                        pause(0.1)
+                        fprintf(fgen, ':OUTP1 ON');
+                        pause(0.1)
+                        fprintf(scope, ':AUToscale');
+                        pause(9)
+                        %{
                         fprintf(scope, ':TRIG:MODE: EDGE');
                         fprintf(scope, ':TRIG:EDG:SOUR CHAN1');
                         fprintf(scope, ':TRIG:EDG:SLOP POS');
                         fprintf(scope, ':TRIG:EDG:LEV 0');
                         fprintf(scope, ':TRIG:SWE: AUTO');
                         fprintf(scope, ':TRIG:NREJ ON');
-                        pause(1); % auto-scale takes about 9 sec
+                        pause(0.1); % auto-scale takes about 9 sec
+                        %}
                         fprintf(scope, ':CHAN1:OFFS 0');
                         fprintf(scope, ':CHAN2:OFFS 0');
                         
-                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(vpp, obj.ch1Att))));
+                        %fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(vpp, obj.ch1Att))));
 %                        ch1Vpp(1) = query(scope, ':MEAS:ITEM? VPP,CHAN1');
 %                        fprintf(scope, ':MEAS:ITEM? VPP,CHAN1' );
 %                        ch1Vpp(1) = str2double(fscanf(scope, '%s' ));
 %                        fprintf(scope, append(':CHAN1:SCAL ', sprintf('%0.7e', Measurement.calcVScale(ch1Vpp(k)))));
-                    end
-                    if freq(k) > 75e3
-                        fprintf(scope, ':TRIG:COUP: LFR');
+                    
+                    %if freq(k) > 75e3
+                    %    fprintf(scope, ':TRIG:COUP: LFR');
+                    %else
+                    %    fprintf(scope, ':TRIG:COUP: HFR');
+                    %end
                     else
-                        fprintf(scope, ':TRIG:COUP: HFR');
+                        period = 1/freq(k);
+                        nP = 2; % number of periods on the screen
+                        timescale = round(period/12*nP, 9);
+                        fprintf(scope, append(':TIM:MAIN:SCAL ', sprintf('%0.7e', timescale)));
                     end
-                    period = 1/freq(k);
-                    nP = 2; % number of periods on the screen
-                    timescale = round(period/12*nP, 9);
-                    fprintf(scope, append(':TIM:MAIN:SCAL ', sprintf('%0.7e', timescale)));
-                    if k == 1
-                        Measurement.findVScale(scope, obj.ch2Att)
-                    end
+                    %if k == 1
+                        %Measurement.findVScale(scope, obj.ch2Att)
+                    %end
                     
                     pause(0.1)
                     fprintf(scope, ':MEAS:ITEM? VPP,CHAN1');
@@ -244,8 +250,9 @@ classdef Measurement < matlab.mixin.SetGet
                     pause(1.5)
                 else
                     if k == 1
+                        pause(0.1)
                         fprintf(fgen, ':OUTP1 ON');
-                        pause(0.5)
+                        pause(0.1)
                     end
                     fprintf(scope, ':AUToscale');
                     pause(9);  % auto-scale takes about 8.6 sec
@@ -313,7 +320,7 @@ classdef Measurement < matlab.mixin.SetGet
             vold = 0;
             for k = [10  1 0.1 0.01]    % coarse
                 fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', k*att)));
-                pause(0.05)
+                pause(0.2)
                 fprintf(scope, ':MEAS:ITEM? VPP,CHAN2');
                 vpp = str2double(fscanf(scope, '%s'));
                 if vpp < 9.9e+10
@@ -323,10 +330,11 @@ classdef Measurement < matlab.mixin.SetGet
             end
             for k = 1:5     % fine 
                 fprintf(scope, append(':CHAN2:SCAL ', sprintf('%0.7e', Measurement.calcVScale(vold, att))));
-                pause(0.05)
+                pause(1)
                 fprintf(scope, ':MEAS:ITEM? VPP,CHAN2');
                 vnew = str2double(fscanf(scope, '%s'));
                 if abs(vnew-vold) <= 0.05
+                    pause(3)
                     return
                 end
                 vold = vnew;
