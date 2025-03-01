@@ -40,7 +40,7 @@ Take the measurement:
 ```
 m1.makeMeasurement('scopeIp', 'fgenIp')    
 ```
-To get the progress oin percent, use:
+To get the progress state of the data acquisition [%], use:
 ```
 m1.progress  
 ```
